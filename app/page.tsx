@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 function createAlbumCode() {
@@ -18,6 +18,28 @@ function createAlbumCode() {
 export default function Home() {
   const router = useRouter();
   const [albumCode, setAlbumCode] = useState("");
+  const [showInstructions, setShowInstructions] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const hasSeenInstructions = localStorage.getItem(
+        "has_seen_album_instructions"
+      );
+
+      if (!hasSeenInstructions) {
+        setShowInstructions(true);
+      }
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []);
+
+  function closeInstructions() {
+    localStorage.setItem("has_seen_album_instructions", "true");
+    setShowInstructions(false);
+  }
 
   function handleCreateAlbum() {
     const newCode = createAlbumCode();
@@ -45,6 +67,47 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-950 px-4 py-6 text-white">
+      {showInstructions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+            <p className="mb-2 text-sm font-bold uppercase tracking-[0.25em] text-green-400">
+              Importante
+            </p>
+
+            <h2 className="mb-4 text-2xl font-black">
+              Antes de compartir la app
+            </h2>
+
+            <div className="space-y-3 text-sm leading-relaxed text-zinc-300">
+              <p>
+                El link inicial de la app sirve para crear o entrar a un álbum,
+                pero no es el link que debes compartir para editar un álbum
+                específico.
+              </p>
+
+              <p>
+                Primero toca <strong>Crear mi álbum</strong>. La app generará un
+                código único y te llevará a un nuevo link.
+              </p>
+
+              <p>
+                Comparte únicamente el link que aparece dentro de tu álbum,
+                usando el botón <strong>Copiar link de este álbum</strong>. Ese
+                link es el que permite que otras personas entren al mismo
+                listado.
+              </p>
+            </div>
+
+            <button
+              onClick={closeInstructions}
+              className="mt-6 w-full rounded-2xl bg-green-500 px-5 py-4 text-left text-lg font-bold text-zinc-950 active:scale-95"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
       <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col justify-center">
         <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
           <p className="mb-2 text-sm font-medium uppercase tracking-[0.3em] text-green-400">
