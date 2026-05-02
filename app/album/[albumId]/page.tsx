@@ -11,6 +11,18 @@ import {
   ViewMode,
 } from "@/types/album";
 
+function createAlbumCode() {
+  const characters = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let code = "";
+
+  for (let index = 0; index < 12; index++) {
+    const randomIndex = Math.floor(Math.random() * characters.length);
+    code += characters[randomIndex];
+  }
+
+  return code;
+}
+
 type StickerRow = {
   album_id: string;
   sticker_key: string;
@@ -193,6 +205,56 @@ export default function AlbumPage() {
     setView("home");
   }
 
+  function goBack() {
+    if (view === "section-detail") {
+      setView("sections");
+      return;
+    }
+
+    if (view === "missing-section-detail") {
+      setView("missing-sections");
+      return;
+    }
+
+    if (
+      view === "sections" ||
+      view === "repeated" ||
+      view === "missing-sections"
+    ) {
+      goHome();
+      return;
+    }
+
+    goHome();
+  }
+
+  function getBackButtonText() {
+    if (view === "section-detail") {
+      return "Países";
+    }
+
+    if (view === "missing-section-detail") {
+      return "Faltantes";
+    }
+
+    if (
+      view === "sections" ||
+      view === "repeated" ||
+      view === "missing-sections"
+    ) {
+      return "Inicio";
+    }
+
+    return "Inicio";
+  }
+
+  function createAnotherAlbum() {
+    const newCode = createAlbumCode();
+
+    localStorage.setItem("last_album_code", newCode);
+    router.push(`/album/${newCode}`);
+  }
+
   function openSection(section: AlbumSection) {
     setSelectedSection(section);
     setView("section-detail");
@@ -293,10 +355,10 @@ export default function AlbumPage() {
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-5 sm:px-6">
         <header className="mb-5 flex items-center justify-between gap-3">
           <button
-            onClick={goHome}
+            onClick={goBack}
             className="rounded-full bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 active:scale-95"
           >
-            Inicio
+            {getBackButtonText()}
           </button>
 
           <div className="text-right text-xs text-zinc-400">
@@ -337,10 +399,10 @@ export default function AlbumPage() {
                 </button>
 
                 <button
-                  onClick={() => router.push("/")}
+                  onClick={createAnotherAlbum}
                   className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-base font-bold text-white active:scale-95"
                 >
-                  Ir al inicio general
+                  Crear otro álbum
                 </button>
               </div>
 
