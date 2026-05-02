@@ -133,6 +133,25 @@ export default function AlbumPage() {
     };
   }, [albumId]);
 
+  useEffect(() => {
+    if (view !== "sections" || !lastOpenedSectionCode) return;
+
+    const timer = setTimeout(() => {
+      const sectionElement = document.getElementById(
+        `section-${lastOpenedSectionCode}`
+      );
+
+      sectionElement?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [view, lastOpenedSectionCode]);
+
   async function saveStickerStatus(
     sectionCode: string,
     number: number,
@@ -458,6 +477,7 @@ export default function AlbumPage() {
 
                 return (
                   <button
+                    id={`section-${section.code}`}
                     key={section.code}
                     onClick={() => openSection(section)}
                     className={[
