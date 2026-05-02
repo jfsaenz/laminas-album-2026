@@ -46,6 +46,9 @@ export default function AlbumPage() {
   const [selectedSection, setSelectedSection] = useState<AlbumSection | null>(
     null
   );
+  const [lastOpenedSectionCode, setLastOpenedSectionCode] = useState<
+    string | null
+  >(null);
   const [stickers, setStickers] = useState<StickerState>({});
   const [isLoading, setIsLoading] = useState(true);
   const [syncMessage, setSyncMessage] = useState("Cargando datos...");
@@ -257,6 +260,7 @@ export default function AlbumPage() {
 
   function openSection(section: AlbumSection) {
     setSelectedSection(section);
+    setLastOpenedSectionCode(section.code);
     setView("section-detail");
   }
 
@@ -436,6 +440,15 @@ export default function AlbumPage() {
           <section>
             <h2 className="mb-4 text-2xl font-black">Listado total</h2>
 
+            <div className="mb-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-3 text-sm leading-relaxed text-green-300">
+              <p className="font-bold text-green-400">Funcionamiento:</p>
+              <p>
+                Toca una vez para seleccionar una lámina. Tócala nuevamente para
+                deseleccionarla. Haz doble toque rápido para sumarla como
+                repetida.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {albumSections.map((section) => {
                 const sectionOwned = section.numbers.filter((number) => {
@@ -447,7 +460,12 @@ export default function AlbumPage() {
                   <button
                     key={section.code}
                     onClick={() => openSection(section)}
-                    className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-left active:scale-95"
+                    className={[
+                      "rounded-2xl border bg-zinc-900 p-4 text-left active:scale-95",
+                      lastOpenedSectionCode === section.code
+                        ? "border-green-400 shadow-[0_0_0_1px_rgba(74,222,128,0.35)]"
+                        : "border-zinc-800",
+                    ].join(" ")}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -481,11 +499,6 @@ export default function AlbumPage() {
                 Volver
               </button>
             </div>
-
-            <p className="mb-4 rounded-2xl bg-zinc-900 p-3 text-sm text-zinc-300">
-              Toca una lámina para marcarla como conseguida. Haz doble toque para
-              sumar una repetida.
-            </p>
 
             <div className="grid grid-cols-4 gap-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10">
               {selectedSection.numbers.map((number) => {
