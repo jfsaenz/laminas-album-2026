@@ -19,4 +19,5 @@ export type ViewMode =
   | "section-detail"
   | "repeated"
   | "missing-sections"
-  | "missing-section-detail";
+  | "missing-section-detail"
+  | "compare";

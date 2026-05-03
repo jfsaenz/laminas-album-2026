@@ -36,9 +36,7 @@ function matchesFlexibleSearch(values: Array<string | number>, query: string) {
 
   if (!cleanQuery) return true;
 
-  return values.some((value) =>
-    normalizeSearchText(value).includes(cleanQuery)
-  );
+  return values.some((value) => normalizeSearchText(value).includes(cleanQuery));
 }
 
 function matchesSectionSearch(section: AlbumSection, query: string) {
@@ -66,12 +64,26 @@ function matchesStickerSearch(
   );
 }
 
+function getSectionNameByCode(sectionCode: string) {
+  return (
+    albumSections.find((section) => section.code === sectionCode)?.name ??
+    sectionCode
+  );
+}
+
 type StickerRow = {
   album_id: string;
   sticker_key: string;
   section_code: string;
   sticker_number: number;
   owned: boolean;
+  duplicates: number;
+};
+
+type CompareSticker = {
+  sectionName: string;
+  sectionCode: string;
+  number: number;
   duplicates: number;
 };
 
@@ -100,6 +112,17 @@ export default function AlbumPage() {
   const [sectionsSearch, setSectionsSearch] = useState("");
   const [repeatedSearch, setRepeatedSearch] = useState("");
   const [missingSearch, setMissingSearch] = useState("");
+
+  const [compareCode, setCompareCode] = useState("");
+  const [comparedAlbumCode, setComparedAlbumCode] = useState("");
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareMessage, setCompareMessage] = useState("");
+  const [otherRepeatedUseful, setOtherRepeatedUseful] = useState<
+    CompareSticker[]
+  >([]);
+  const [myRepeatedUseful, setMyRepeatedUseful] = useState<CompareSticker[]>(
+    []
+  );
 
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -306,7 +329,8 @@ export default function AlbumPage() {
     if (
       view === "sections" ||
       view === "repeated" ||
-      view === "missing-sections"
+      view === "missing-sections" ||
+      view === "compare"
     ) {
       goHome();
       return;
@@ -327,7 +351,8 @@ export default function AlbumPage() {
     if (
       view === "sections" ||
       view === "repeated" ||
-      view === "missing-sections"
+      view === "missing-sections" ||
+      view === "compare"
     ) {
       return "Inicio";
     }
@@ -425,6 +450,107 @@ export default function AlbumPage() {
     }, 1800);
   }
 
+  async function compareAlbums() {
+    const cleanCode = compareCode.trim().toLowerCase();
+
+    if (!cleanCode) {
+      setCompareMessage("Ingresa un código de álbum para comparar.");
+      return;
+    }
+
+    if (cleanCode === albumId) {
+      setCompareMessage("Ese es tu mismo álbum. Ingresa otro código.");
+      return;
+    }
+
+    setCompareLoading(true);
+    setCompareMessage("");
+    setComparedAlbumCode(cleanCode);
+    setOtherRepeatedUseful([]);
+    setMyRepeatedUseful([]);
+
+    const { data, error } = await supabase
+      .from("sticker_states_pilot")
+      .select(
+        "album_id, sticker_key, section_code, sticker_number, owned, duplicates"
+      )
+      .eq("album_id", cleanCode);
+
+    if (error) {
+      console.error(error);
+      setCompareMessage("No se pudo cargar el otro álbum.");
+      setCompareLoading(false);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      setCompareMessage(
+        "No se encontraron datos para ese código. Revisa que esté bien escrito."
+      );
+      setCompareLoading(false);
+      return;
+    }
+
+    const otherState: StickerState = {};
+
+    data.forEach((row: StickerRow) => {
+      otherState[row.sticker_key] = {
+        owned: row.owned,
+        duplicates: row.duplicates,
+      };
+    });
+
+    const usefulFromOther: CompareSticker[] = [];
+    const usefulFromMe: CompareSticker[] = [];
+
+    albumSections.forEach((section) => {
+      section.numbers.forEach((number) => {
+        const key = getStickerKey(section.code, number);
+
+        const myStatus = stickers[key] ?? {
+          owned: false,
+          duplicates: 0,
+        };
+
+        const otherStatus = otherState[key] ?? {
+          owned: false,
+          duplicates: 0,
+        };
+
+        if (otherStatus.duplicates > 0 && !myStatus.owned) {
+          usefulFromOther.push({
+            sectionName: section.name,
+            sectionCode: section.code,
+            number,
+            duplicates: otherStatus.duplicates,
+          });
+        }
+
+        if (myStatus.duplicates > 0 && !otherStatus.owned) {
+          usefulFromMe.push({
+            sectionName: section.name,
+            sectionCode: section.code,
+            number,
+            duplicates: myStatus.duplicates,
+          });
+        }
+      });
+    });
+
+    setOtherRepeatedUseful(usefulFromOther);
+    setMyRepeatedUseful(usefulFromMe);
+
+    if (usefulFromOther.length === 0 && usefulFromMe.length === 0) {
+      setCompareMessage(
+        "No se encontraron coincidencias útiles entre los dos álbumes."
+      );
+    } else {
+      setCompareMessage("Comparación lista.");
+    }
+
+    setCompareLoading(false);
+  }
+
   if (isLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-4 text-white">
@@ -514,6 +640,13 @@ export default function AlbumPage() {
                   className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-lg font-bold text-white active:scale-95"
                 >
                   Faltantes
+                </button>
+
+                <button
+                  onClick={() => setView("compare")}
+                  className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-lg font-bold text-white active:scale-95"
+                >
+                  Comparar álbum
                 </button>
               </div>
             </div>
@@ -771,6 +904,110 @@ export default function AlbumPage() {
             }) && (
               <EmptyState text="Ya tienes todas las láminas de este apartado." />
             )}
+          </section>
+        )}
+
+        {view === "compare" && (
+          <section>
+            <h2 className="mb-4 text-2xl font-black">Comparar álbum</h2>
+
+            <div className="mb-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-3 text-sm leading-relaxed text-green-300">
+              <p className="font-bold text-green-400">Intercambio:</p>
+              <p>
+                Ingresa el código de otro álbum para ver cuáles de sus repetidas
+                te sirven y cuáles de tus repetidas podrían servirle.
+              </p>
+            </div>
+
+            <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+              <label className="mb-2 block text-sm font-bold text-zinc-300">
+                Código del otro álbum
+              </label>
+
+              <input
+                value={compareCode}
+                onChange={(event) => setCompareCode(event.target.value)}
+                placeholder="Ej: k8x4p2m9q1za"
+                className="mb-3 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-white outline-none focus:border-green-400"
+              />
+
+              <button
+                onClick={compareAlbums}
+                disabled={compareLoading}
+                className="w-full rounded-xl bg-green-500 px-4 py-3 font-bold text-zinc-950 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {compareLoading ? "Comparando..." : "Comparar"}
+              </button>
+            </div>
+
+            {compareMessage && (
+              <p className="mb-4 rounded-2xl bg-zinc-900 p-3 text-sm text-zinc-300">
+                {compareMessage}
+              </p>
+            )}
+
+            {comparedAlbumCode && (
+              <div className="mb-4 rounded-2xl bg-zinc-900 p-3 text-sm text-zinc-400">
+                Comparando tu álbum <strong>{albumId}</strong> con{" "}
+                <strong>{comparedAlbumCode}</strong>
+              </div>
+            )}
+
+            <div className="grid gap-5 lg:grid-cols-2">
+              <div>
+                <h3 className="mb-3 text-lg font-black text-green-400">
+                  Repetidas del otro álbum que te sirven
+                </h3>
+
+                {otherRepeatedUseful.length === 0 ? (
+                  <EmptyState text="No hay repetidas del otro álbum que te falten." />
+                ) : (
+                  <div className="grid gap-3">
+                    {otherRepeatedUseful.map((sticker) => (
+                      <div
+                        key={`other-${sticker.sectionCode}-${sticker.number}`}
+                        className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
+                      >
+                        <h4 className="font-bold">
+                          {sticker.sectionName} - {sticker.sectionCode}{" "}
+                          {sticker.number}
+                        </h4>
+                        <p className="text-sm text-zinc-400">
+                          Repetidas disponibles: {sticker.duplicates}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h3 className="mb-3 text-lg font-black text-green-400">
+                  Tus repetidas que podrían servirle
+                </h3>
+
+                {myRepeatedUseful.length === 0 ? (
+                  <EmptyState text="No tienes repetidas que le falten al otro álbum." />
+                ) : (
+                  <div className="grid gap-3">
+                    {myRepeatedUseful.map((sticker) => (
+                      <div
+                        key={`mine-${sticker.sectionCode}-${sticker.number}`}
+                        className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
+                      >
+                        <h4 className="font-bold">
+                          {sticker.sectionName} - {sticker.sectionCode}{" "}
+                          {sticker.number}
+                        </h4>
+                        <p className="text-sm text-zinc-400">
+                          Tus repetidas: {sticker.duplicates}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </section>
         )}
       </div>
