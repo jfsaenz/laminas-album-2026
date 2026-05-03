@@ -64,13 +64,6 @@ function matchesStickerSearch(
   );
 }
 
-function getSectionNameByCode(sectionCode: string) {
-  return (
-    albumSections.find((section) => section.code === sectionCode)?.name ??
-    sectionCode
-  );
-}
-
 type StickerRow = {
   album_id: string;
   sticker_key: string;
@@ -273,6 +266,11 @@ export default function AlbumPage() {
   const ownedCount = useMemo(() => {
     return Object.values(stickers).filter((sticker) => sticker.owned).length;
   }, [stickers]);
+
+  const completedPercentage =
+    totalStickers === 0
+      ? "0.0"
+      : ((ownedCount / totalStickers) * 100).toFixed(1);
 
   const repeatedStickers = useMemo(() => {
     return albumSections.flatMap((section) =>
@@ -580,6 +578,9 @@ export default function AlbumPage() {
               {ownedCount}/{totalStickers} conseguidas
             </p>
             <p>{repeatedStickers.length} tipos repetidos</p>
+            <p className="font-bold text-green-300">
+              {completedPercentage}% completado
+            </p>
             <p className="text-green-400">{syncMessage}</p>
           </div>
         </header>
@@ -914,14 +915,15 @@ export default function AlbumPage() {
             <div className="mb-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-3 text-sm leading-relaxed text-green-300">
               <p className="font-bold text-green-400">Intercambio:</p>
               <p>
-                Ingresa el código de otro álbum para ver cuáles de sus repetidas
-                te sirven y cuáles de tus repetidas podrían servirle.
+                Pídele a la otra persona el código con el que generó su álbum.
+                Escríbelo aquí para comparar sus repetidas con tus faltantes y
+                ver cuáles de tus repetidas podrían servirle.
               </p>
             </div>
 
             <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
               <label className="mb-2 block text-sm font-bold text-zinc-300">
-                Código del otro álbum
+                Código del álbum de la otra persona
               </label>
 
               <input
