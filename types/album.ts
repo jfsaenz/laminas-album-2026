@@ -1,6 +1,7 @@
 export type AlbumSection = {
   name: string;
   code: string;
+  flag: string;
   numbers: number[];
 };
 

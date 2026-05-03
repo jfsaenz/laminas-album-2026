@@ -64,6 +64,10 @@ function matchesStickerSearch(
   );
 }
 
+function getSectionFlag(sectionCode: string) {
+  return albumSections.find((section) => section.code === sectionCode)?.flag ?? "🏳️";
+}
+
 type StickerRow = {
   album_id: string;
   sticker_key: string;
@@ -359,6 +363,12 @@ export default function AlbumPage() {
   }
 
   function createAnotherAlbum() {
+    const confirmed = window.confirm(
+      "Vas a crear un álbum nuevo. Este álbum actual no se borra, pero entrarás a otro código. ¿Quieres continuar?"
+    );
+
+    if (!confirmed) return;
+
     const newCode = createAlbumCode();
 
     localStorage.setItem("last_album_code", newCode);
@@ -699,6 +709,7 @@ export default function AlbumPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="text-lg font-bold">
+                            <span className="mr-2">{section.flag}</span>
                             {section.name}
                           </h3>
                           <p className="text-sm text-zinc-400">
@@ -722,7 +733,10 @@ export default function AlbumPage() {
           <section>
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-black">{selectedSection.name}</h2>
+                <h2 className="text-2xl font-black">
+                  <span className="mr-2">{selectedSection.flag}</span>
+                  {selectedSection.name}
+                </h2>
                 <p className="text-sm text-zinc-400">{selectedSection.code}</p>
               </div>
 
@@ -793,6 +807,9 @@ export default function AlbumPage() {
                   >
                     <div>
                       <h3 className="font-bold">
+                        <span className="mr-2">
+                          {getSectionFlag(sticker.sectionCode)}
+                        </span>
                         {sticker.sectionName} - {sticker.sectionCode}{" "}
                         {sticker.number}
                       </h3>
@@ -846,6 +863,7 @@ export default function AlbumPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="text-lg font-bold">
+                            <span className="mr-2">{section.flag}</span>
                             {section.name}
                           </h3>
                           <p className="text-sm text-zinc-400">
@@ -870,7 +888,9 @@ export default function AlbumPage() {
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-black">
-                  Faltantes - {selectedSection.name}
+                  Faltantes -{" "}
+                  <span className="mr-1">{selectedSection.flag}</span>
+                  {selectedSection.name}
                 </h2>
                 <p className="text-sm text-zinc-400">{selectedSection.code}</p>
               </div>
@@ -971,6 +991,9 @@ export default function AlbumPage() {
                         className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
                       >
                         <h4 className="font-bold">
+                          <span className="mr-2">
+                            {getSectionFlag(sticker.sectionCode)}
+                          </span>
                           {sticker.sectionName} - {sticker.sectionCode}{" "}
                           {sticker.number}
                         </h4>
@@ -998,6 +1021,9 @@ export default function AlbumPage() {
                         className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
                       >
                         <h4 className="font-bold">
+                          <span className="mr-2">
+                            {getSectionFlag(sticker.sectionCode)}
+                          </span>
                           {sticker.sectionName} - {sticker.sectionCode}{" "}
                           {sticker.number}
                         </h4>
