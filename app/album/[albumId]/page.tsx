@@ -23,6 +23,49 @@ function createAlbumCode() {
   return code;
 }
 
+function normalizeSearchText(value: string | number) {
+  return String(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function matchesFlexibleSearch(values: Array<string | number>, query: string) {
+  const cleanQuery = normalizeSearchText(query);
+
+  if (!cleanQuery) return true;
+
+  return values.some((value) =>
+    normalizeSearchText(value).includes(cleanQuery)
+  );
+}
+
+function matchesSectionSearch(section: AlbumSection, query: string) {
+  return matchesFlexibleSearch([section.name, section.code], query);
+}
+
+function matchesStickerSearch(
+  sticker: {
+    sectionName: string;
+    sectionCode: string;
+    number: number;
+  },
+  query: string
+) {
+  return matchesFlexibleSearch(
+    [
+      sticker.sectionName,
+      sticker.sectionCode,
+      sticker.number,
+      `${sticker.sectionCode} ${sticker.number}`,
+      `${sticker.sectionCode}-${sticker.number}`,
+      `${sticker.sectionName} ${sticker.number}`,
+    ],
+    query
+  );
+}
+
 type StickerRow = {
   album_id: string;
   sticker_key: string;
@@ -53,6 +96,10 @@ export default function AlbumPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [syncMessage, setSyncMessage] = useState("Cargando datos...");
   const [copied, setCopied] = useState(false);
+
+  const [sectionsSearch, setSectionsSearch] = useState("");
+  const [repeatedSearch, setRepeatedSearch] = useState("");
+  const [missingSearch, setMissingSearch] = useState("");
 
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -221,6 +268,24 @@ export default function AlbumPage() {
         .filter((sticker) => sticker.duplicates > 0)
     );
   }, [stickers]);
+
+  const filteredSections = useMemo(() => {
+    return albumSections.filter((section) =>
+      matchesSectionSearch(section, sectionsSearch)
+    );
+  }, [sectionsSearch]);
+
+  const filteredRepeatedStickers = useMemo(() => {
+    return repeatedStickers.filter((sticker) =>
+      matchesStickerSearch(sticker, repeatedSearch)
+    );
+  }, [repeatedStickers, repeatedSearch]);
+
+  const filteredMissingSections = useMemo(() => {
+    return albumSections.filter((section) =>
+      matchesSectionSearch(section, missingSearch)
+    );
+  }, [missingSearch]);
 
   function goHome() {
     setSelectedSection(null);
@@ -468,39 +533,54 @@ export default function AlbumPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {albumSections.map((section) => {
-                const sectionOwned = section.numbers.filter((number) => {
-                  const key = getStickerKey(section.code, number);
-                  return stickers[key]?.owned;
-                }).length;
+            <input
+              value={sectionsSearch}
+              onChange={(event) => setSectionsSearch(event.target.value)}
+              placeholder="Buscar país o abreviatura..."
+              className="mb-4 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none focus:border-green-400"
+            />
 
-                return (
-                  <button
-                    id={`section-${section.code}`}
-                    key={section.code}
-                    onClick={() => openSection(section)}
-                    className={[
-                      "rounded-2xl border bg-zinc-900 p-4 text-left active:scale-95",
-                      lastOpenedSectionCode === section.code
-                        ? "border-green-400 shadow-[0_0_0_1px_rgba(74,222,128,0.35)]"
-                        : "border-zinc-800",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-bold">{section.name}</h3>
-                        <p className="text-sm text-zinc-400">{section.code}</p>
+            {filteredSections.length === 0 ? (
+              <EmptyState text="No se encontraron apartados con esa búsqueda." />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredSections.map((section) => {
+                  const sectionOwned = section.numbers.filter((number) => {
+                    const key = getStickerKey(section.code, number);
+                    return stickers[key]?.owned;
+                  }).length;
+
+                  return (
+                    <button
+                      id={`section-${section.code}`}
+                      key={section.code}
+                      onClick={() => openSection(section)}
+                      className={[
+                        "rounded-2xl border bg-zinc-900 p-4 text-left active:scale-95",
+                        lastOpenedSectionCode === section.code
+                          ? "border-green-400 shadow-[0_0_0_1px_rgba(74,222,128,0.35)]"
+                          : "border-zinc-800",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-lg font-bold">
+                            {section.name}
+                          </h3>
+                          <p className="text-sm text-zinc-400">
+                            {section.code}
+                          </p>
+                        </div>
+
+                        <p className="rounded-full bg-zinc-800 px-3 py-1 text-sm font-bold text-green-400">
+                          {sectionOwned}/{section.numbers.length}
+                        </p>
                       </div>
-
-                      <p className="rounded-full bg-zinc-800 px-3 py-1 text-sm font-bold text-green-400">
-                        {sectionOwned}/{section.numbers.length}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </section>
         )}
 
@@ -559,11 +639,20 @@ export default function AlbumPage() {
           <section>
             <h2 className="mb-4 text-2xl font-black">Láminas repetidas</h2>
 
+            <input
+              value={repeatedSearch}
+              onChange={(event) => setRepeatedSearch(event.target.value)}
+              placeholder="Buscar repetida por país, código o número..."
+              className="mb-4 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none focus:border-green-400"
+            />
+
             {repeatedStickers.length === 0 ? (
               <EmptyState text="Todavía no tienes láminas repetidas." />
+            ) : filteredRepeatedStickers.length === 0 ? (
+              <EmptyState text="No se encontraron repetidas con esa búsqueda." />
             ) : (
               <div className="grid gap-3">
-                {repeatedStickers.map((sticker) => (
+                {filteredRepeatedStickers.map((sticker) => (
                   <div
                     key={`${sticker.sectionCode}-${sticker.number}`}
                     className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
@@ -597,33 +686,48 @@ export default function AlbumPage() {
           <section>
             <h2 className="mb-4 text-2xl font-black">Láminas faltantes</h2>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {albumSections.map((section) => {
-                const sectionMissing = section.numbers.filter((number) => {
-                  const key = getStickerKey(section.code, number);
-                  return !stickers[key]?.owned;
-                }).length;
+            <input
+              value={missingSearch}
+              onChange={(event) => setMissingSearch(event.target.value)}
+              placeholder="Buscar país o abreviatura..."
+              className="mb-4 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none focus:border-green-400"
+            />
 
-                return (
-                  <button
-                    key={section.code}
-                    onClick={() => openMissingSection(section)}
-                    className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-left active:scale-95"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-bold">{section.name}</h3>
-                        <p className="text-sm text-zinc-400">{section.code}</p>
+            {filteredMissingSections.length === 0 ? (
+              <EmptyState text="No se encontraron apartados con esa búsqueda." />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredMissingSections.map((section) => {
+                  const sectionMissing = section.numbers.filter((number) => {
+                    const key = getStickerKey(section.code, number);
+                    return !stickers[key]?.owned;
+                  }).length;
+
+                  return (
+                    <button
+                      key={section.code}
+                      onClick={() => openMissingSection(section)}
+                      className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-left active:scale-95"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-lg font-bold">
+                            {section.name}
+                          </h3>
+                          <p className="text-sm text-zinc-400">
+                            {section.code}
+                          </p>
+                        </div>
+
+                        <p className="rounded-full bg-zinc-800 px-3 py-1 text-sm font-bold text-red-400">
+                          {sectionMissing}/{section.numbers.length}
+                        </p>
                       </div>
-
-                      <p className="rounded-full bg-zinc-800 px-3 py-1 text-sm font-bold text-red-400">
-                        {sectionMissing}/{section.numbers.length}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </section>
         )}
 
