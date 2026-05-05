@@ -31,6 +31,13 @@ function normalizeSearchText(value: string | number) {
     .trim();
 }
 
+function normalizeAlbumCode(value: string) {
+  return normalizeSearchText(value)
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-_]/g, "")
+    .slice(0, 24);
+}
+
 function matchesFlexibleSearch(values: Array<string | number>, query: string) {
   const cleanQuery = normalizeSearchText(query);
 
@@ -66,6 +73,38 @@ function matchesStickerSearch(
 
 function getSectionFlag(sectionCode: string) {
   return albumSections.find((section) => section.code === sectionCode)?.flag ?? "🏳️";
+}
+
+function SectionFlag({ section }: { section: AlbumSection }) {
+  if (!section.flagUrl) {
+    return <span className="mr-2">{section.flag}</span>;
+  }
+
+  return (
+    <span className="mr-2 inline-flex h-5 w-7 items-center justify-center align-middle">
+      <img
+        src={section.flagUrl}
+        alt={section.name}
+        className="h-4 w-6 rounded-[3px] object-cover"
+        onError={(event) => {
+          event.currentTarget.style.display = "none";
+          const fallback = event.currentTarget.nextElementSibling as HTMLElement | null;
+          if (fallback) fallback.style.display = "inline";
+        }}
+      />
+      <span className="hidden">{section.flag}</span>
+    </span>
+  );
+}
+
+function SectionFlagByCode({ sectionCode }: { sectionCode: string }) {
+  const section = albumSections.find((item) => item.code === sectionCode);
+
+  if (!section) {
+    return <span className="mr-2">{getSectionFlag(sectionCode)}</span>;
+  }
+
+  return <SectionFlag section={section} />;
 }
 
 type StickerRow = {
@@ -105,6 +144,7 @@ export default function AlbumPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [syncMessage, setSyncMessage] = useState("Cargando datos...");
   const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const [sectionsSearch, setSectionsSearch] = useState("");
   const [repeatedSearch, setRepeatedSearch] = useState("");
@@ -120,6 +160,10 @@ export default function AlbumPage() {
   const [myRepeatedUseful, setMyRepeatedUseful] = useState<CompareSticker[]>(
     []
   );
+
+  const [newAlbumCode, setNewAlbumCode] = useState("");
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [renameMessage, setRenameMessage] = useState("");
 
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -342,14 +386,8 @@ export default function AlbumPage() {
   }
 
   function getBackButtonText() {
-    if (view === "section-detail") {
-      return "Países";
-    }
-
-    if (view === "missing-section-detail") {
-      return "Faltantes";
-    }
-
+    if (view === "section-detail") return "Países";
+    if (view === "missing-section-detail") return "Faltantes";
     if (
       view === "sections" ||
       view === "repeated" ||
@@ -360,6 +398,10 @@ export default function AlbumPage() {
     }
 
     return "Inicio";
+  }
+
+  function goToGeneralHome() {
+    router.push("/");
   }
 
   function createAnotherAlbum() {
@@ -373,6 +415,88 @@ export default function AlbumPage() {
 
     localStorage.setItem("last_album_code", newCode);
     router.push(`/album/${newCode}`);
+  }
+
+  async function copyAlbumLink() {
+    const link = window.location.href;
+
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+
+    setTimeout(() => {
+      setCopied(false);
+    }, 1800);
+  }
+
+  async function copyAlbumCode() {
+    await navigator.clipboard.writeText(albumId);
+    setCodeCopied(true);
+
+    setTimeout(() => {
+      setCodeCopied(false);
+    }, 1800);
+  }
+
+  async function renameAlbumCode() {
+    const cleanCode = normalizeAlbumCode(newAlbumCode);
+
+    if (!cleanCode || cleanCode.length < 4) {
+      setRenameMessage("El nuevo código debe tener al menos 4 caracteres.");
+      return;
+    }
+
+    if (cleanCode === albumId) {
+      setRenameMessage("Ese ya es el código actual de este álbum.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Vas a cambiar el código de este álbum a "${cleanCode}". El link anterior ya no será el principal para compartir. ¿Quieres continuar?`
+    );
+
+    if (!confirmed) return;
+
+    setRenameLoading(true);
+    setRenameMessage("");
+
+    const { data: existingData, error: existingError } = await supabase
+      .from("sticker_states_pilot")
+      .select("album_id")
+      .eq("album_id", cleanCode)
+      .limit(1);
+
+    if (existingError) {
+      console.error(existingError);
+      setRenameMessage("No se pudo validar el nuevo código.");
+      setRenameLoading(false);
+      return;
+    }
+
+    if (existingData && existingData.length > 0) {
+      setRenameMessage("Ese código ya está en uso. Prueba con otro.");
+      setRenameLoading(false);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("sticker_states_pilot")
+      .update({
+        album_id: cleanCode,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("album_id", albumId);
+
+    if (error) {
+      console.error(error);
+      setRenameMessage("No se pudo cambiar el código.");
+      setRenameLoading(false);
+      return;
+    }
+
+    localStorage.setItem("last_album_code", cleanCode);
+    setRenameMessage("Código actualizado.");
+    setRenameLoading(false);
+    router.push(`/album/${cleanCode}`);
   }
 
   function openSection(section: AlbumSection) {
@@ -445,17 +569,6 @@ export default function AlbumPage() {
       toggleOwned(sectionCode, number);
       clickTimer.current = null;
     }, 250);
-  }
-
-  async function copyAlbumLink() {
-    const link = window.location.href;
-
-    await navigator.clipboard.writeText(link);
-    setCopied(true);
-
-    setTimeout(() => {
-      setCopied(false);
-    }, 1800);
   }
 
   async function compareAlbums() {
@@ -597,68 +710,121 @@ export default function AlbumPage() {
 
         {view === "home" && (
           <section className="flex flex-1 flex-col items-center justify-center">
-            <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-              <p className="mb-2 text-sm font-medium uppercase tracking-[0.3em] text-green-400">
-                Mundial
-              </p>
-
-              <h1 className="mb-4 text-4xl font-black leading-tight">
-                Láminas Álbum 2026
-              </h1>
-
-              <div className="mb-5 rounded-2xl bg-zinc-950 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
-                  Código del álbum
+            <div className="w-full max-w-md space-y-4">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+                <p className="mb-2 text-sm font-medium uppercase tracking-[0.3em] text-green-400">
+                  Mundial
                 </p>
-                <p className="mt-1 break-all text-xl font-black text-green-400">
-                  {albumId}
-                </p>
+
+                <h1 className="mb-5 text-4xl font-black leading-tight">
+                  Láminas Álbum 2026
+                </h1>
+
+                <div className="mb-5 rounded-2xl bg-zinc-950 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
+                    Código del álbum
+                  </p>
+                  <p className="mt-1 break-all text-xl font-black text-green-400">
+                    {albumId}
+                  </p>
+                </div>
+
+                <h2 className="mb-3 text-lg font-black text-white">
+                  Gestión del álbum
+                </h2>
+
+                <div className="grid gap-3">
+                  <button
+                    onClick={copyAlbumLink}
+                    className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-base font-bold text-white active:scale-95"
+                  >
+                    {copied ? "Link copiado" : "Copiar link de este álbum"}
+                  </button>
+
+                  <button
+                    onClick={copyAlbumCode}
+                    className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-base font-bold text-white active:scale-95"
+                  >
+                    {codeCopied ? "Código copiado" : "Copiar código del álbum"}
+                  </button>
+
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                    <label className="mb-2 block text-sm font-bold text-zinc-300">
+                      Personalizar código
+                    </label>
+
+                    <input
+                      value={newAlbumCode}
+                      onChange={(event) => setNewAlbumCode(event.target.value)}
+                      placeholder="Ej: familia-saenz"
+                      className="mb-3 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none focus:border-green-400"
+                    />
+
+                    <button
+                      onClick={renameAlbumCode}
+                      disabled={renameLoading}
+                      className="w-full rounded-xl bg-zinc-800 px-4 py-3 font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {renameLoading ? "Actualizando..." : "Cambiar código"}
+                    </button>
+
+                    {renameMessage && (
+                      <p className="mt-3 text-sm text-zinc-400">
+                        {renameMessage}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={createAnotherAlbum}
+                    className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-base font-bold text-white active:scale-95"
+                  >
+                    Crear otro álbum
+                  </button>
+
+                  <button
+                    onClick={goToGeneralHome}
+                    className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-base font-bold text-white active:scale-95"
+                  >
+                    Volver al inicio general
+                  </button>
+                </div>
               </div>
 
-              <div className="mb-5 grid grid-cols-1 gap-3">
-                <button
-                  onClick={copyAlbumLink}
-                  className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-base font-bold text-white active:scale-95"
-                >
-                  {copied ? "Link copiado" : "Copiar link de este álbum"}
-                </button>
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+                <h2 className="mb-3 text-lg font-black text-white">
+                  Mi álbum
+                </h2>
 
-                <button
-                  onClick={createAnotherAlbum}
-                  className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-base font-bold text-white active:scale-95"
-                >
-                  Crear otro álbum
-                </button>
-              </div>
+                <div className="grid gap-3">
+                  <button
+                    onClick={() => setView("sections")}
+                    className="rounded-2xl bg-green-500 px-5 py-4 text-left text-lg font-bold text-zinc-950 active:scale-95"
+                  >
+                    Listado total
+                  </button>
 
-              <div className="grid gap-3">
-                <button
-                  onClick={() => setView("sections")}
-                  className="rounded-2xl bg-green-500 px-5 py-4 text-left text-lg font-bold text-zinc-950 active:scale-95"
-                >
-                  Listado total
-                </button>
+                  <button
+                    onClick={() => setView("repeated")}
+                    className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-lg font-bold text-white active:scale-95"
+                  >
+                    Repetidas
+                  </button>
 
-                <button
-                  onClick={() => setView("repeated")}
-                  className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-lg font-bold text-white active:scale-95"
-                >
-                  Repetidas
-                </button>
+                  <button
+                    onClick={() => setView("missing-sections")}
+                    className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-lg font-bold text-white active:scale-95"
+                  >
+                    Faltantes
+                  </button>
 
-                <button
-                  onClick={() => setView("missing-sections")}
-                  className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-lg font-bold text-white active:scale-95"
-                >
-                  Faltantes
-                </button>
-
-                <button
-                  onClick={() => setView("compare")}
-                  className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-lg font-bold text-white active:scale-95"
-                >
-                  Comparar álbum
-                </button>
+                  <button
+                    onClick={() => setView("compare")}
+                    className="rounded-2xl bg-zinc-800 px-5 py-4 text-left text-lg font-bold text-white active:scale-95"
+                  >
+                    Comparar álbum
+                  </button>
+                </div>
               </div>
             </div>
           </section>
@@ -709,7 +875,7 @@ export default function AlbumPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="text-lg font-bold">
-                            <span className="mr-2">{section.flag}</span>
+                            <SectionFlag section={section} />
                             {section.name}
                           </h3>
                           <p className="text-sm text-zinc-400">
@@ -734,7 +900,7 @@ export default function AlbumPage() {
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-black">
-                  <span className="mr-2">{selectedSection.flag}</span>
+                  <SectionFlag section={selectedSection} />
                   {selectedSection.name}
                 </h2>
                 <p className="text-sm text-zinc-400">{selectedSection.code}</p>
@@ -807,9 +973,7 @@ export default function AlbumPage() {
                   >
                     <div>
                       <h3 className="font-bold">
-                        <span className="mr-2">
-                          {getSectionFlag(sticker.sectionCode)}
-                        </span>
+                        <SectionFlagByCode sectionCode={sticker.sectionCode} />
                         {sticker.sectionName} - {sticker.sectionCode}{" "}
                         {sticker.number}
                       </h3>
@@ -863,7 +1027,7 @@ export default function AlbumPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="text-lg font-bold">
-                            <span className="mr-2">{section.flag}</span>
+                            <SectionFlag section={section} />
                             {section.name}
                           </h3>
                           <p className="text-sm text-zinc-400">
@@ -888,8 +1052,7 @@ export default function AlbumPage() {
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-black">
-                  Faltantes -{" "}
-                  <span className="mr-1">{selectedSection.flag}</span>
+                  Faltantes - <SectionFlag section={selectedSection} />
                   {selectedSection.name}
                 </h2>
                 <p className="text-sm text-zinc-400">{selectedSection.code}</p>
@@ -991,9 +1154,7 @@ export default function AlbumPage() {
                         className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
                       >
                         <h4 className="font-bold">
-                          <span className="mr-2">
-                            {getSectionFlag(sticker.sectionCode)}
-                          </span>
+                          <SectionFlagByCode sectionCode={sticker.sectionCode} />
                           {sticker.sectionName} - {sticker.sectionCode}{" "}
                           {sticker.number}
                         </h4>
@@ -1021,9 +1182,7 @@ export default function AlbumPage() {
                         className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
                       >
                         <h4 className="font-bold">
-                          <span className="mr-2">
-                            {getSectionFlag(sticker.sectionCode)}
-                          </span>
+                          <SectionFlagByCode sectionCode={sticker.sectionCode} />
                           {sticker.sectionName} - {sticker.sectionCode}{" "}
                           {sticker.number}
                         </h4>
