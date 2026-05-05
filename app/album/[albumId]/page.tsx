@@ -450,9 +450,9 @@ export default function AlbumPage() {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Vas a cambiar el código de este álbum a "${cleanCode}". El link anterior ya no será el principal para compartir. ¿Quieres continuar?`
-    );
+      const confirmed = window.confirm(
+      `Vas a cambiar el código de este álbum a "${cleanCode}". Esto también cambiará la URL del álbum. El link anterior quedará vacío o desactualizado, así que deberás compartir el nuevo link. ¿Quieres continuar?`
+      );
 
     if (!confirmed) return;
 
@@ -756,7 +756,7 @@ export default function AlbumPage() {
                     <input
                       value={newAlbumCode}
                       onChange={(event) => setNewAlbumCode(event.target.value)}
-                      placeholder="Ej: familia-saenz"
+                      placeholder="Ej: album-juan-andres"
                       className="mb-3 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none focus:border-green-400"
                     />
 
