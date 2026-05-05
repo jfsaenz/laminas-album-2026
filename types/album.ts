@@ -17,6 +17,8 @@ export type StickerState = Record<StickerKey, StickerStatus>;
 
 export type ViewMode =
   | "home"
+  | "settings"
+  | "album-menu"
   | "sections"
   | "section-detail"
   | "repeated"
