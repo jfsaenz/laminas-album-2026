@@ -34,7 +34,7 @@ export const albumSections: AlbumSection[] = [
   { name: "Costa de Marfil", code: "CIV", flag: "🇨🇮", flagUrl: flagUrl("ci"), numbers: numbers1To20 },
   { name: "Ecuador", code: "ECU", flag: "🇪🇨", flagUrl: flagUrl("ec"), numbers: numbers1To20 },
   { name: "Holanda / Países Bajos", code: "NED", flag: "🇳🇱", flagUrl: flagUrl("nl"), numbers: numbers1To20 },
-  { name: "Japón", code: "JPM", flag: "🇯🇵", flagUrl: flagUrl("jp"), numbers: numbers1To20 },
+  { name: "Japón", code: "JPN", flag: "🇯🇵", flagUrl: flagUrl("jp"), numbers: numbers1To20 },
   { name: "Suecia", code: "SWE", flag: "🇸🇪", flagUrl: flagUrl("se"), numbers: numbers1To20 },
   { name: "Túnez", code: "TUN", flag: "🇹🇳", flagUrl: flagUrl("tn"), numbers: numbers1To20 },
   { name: "Bélgica", code: "BEL", flag: "🇧🇪", flagUrl: flagUrl("be"), numbers: numbers1To20 },
