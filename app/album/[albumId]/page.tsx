@@ -811,7 +811,7 @@ export default function AlbumPage() {
                   <input
                     value={newAlbumCode}
                     onChange={(event) => setNewAlbumCode(event.target.value)}
-                    placeholder="Ej: familia-saenz"
+                    placeholder="Ej: álbum-juan-felipe"
                     className="mb-3 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none focus:border-green-400"
                   />
 
