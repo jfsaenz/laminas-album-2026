@@ -127,6 +127,12 @@ type CompareSticker = {
   duplicates: number;
 };
 
+type RepetitionEditor = {
+  sectionCode: string;
+  sectionName: string;
+  number: number;
+} | null;
+
 export default function AlbumPage() {
   const router = useRouter();
   const params = useParams();
@@ -169,7 +175,12 @@ export default function AlbumPage() {
   const [renameLoading, setRenameLoading] = useState(false);
   const [renameMessage, setRenameMessage] = useState("");
 
-  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [repetitionEditor, setRepetitionEditor] =
+    useState<RepetitionEditor>(null);
+  const [showRepeatUpdateNotice, setShowRepeatUpdateNotice] = useState(false);
+
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
 
   useEffect(() => {
     localStorage.setItem("last_album_code", albumId);
@@ -247,6 +258,22 @@ export default function AlbumPage() {
       supabase.removeChannel(channel);
     };
   }, [albumId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const hasSeenNotice = localStorage.getItem(
+        "has_seen_repeat_longpress_update_v1"
+      );
+
+      if (!hasSeenNotice) {
+        setShowRepeatUpdateNotice(true);
+      }
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (view !== "sections" || !lastOpenedSectionCode) return;
@@ -360,6 +387,20 @@ export default function AlbumPage() {
     );
   }, [missingSearch]);
 
+  const editingStickerStatus = repetitionEditor
+    ? stickers[
+        getStickerKey(repetitionEditor.sectionCode, repetitionEditor.number)
+      ] ?? {
+        owned: false,
+        duplicates: 0,
+      }
+    : null;
+
+  function closeRepeatUpdateNotice() {
+    localStorage.setItem("has_seen_repeat_longpress_update_v1", "true");
+    setShowRepeatUpdateNotice(false);
+  }
+
   function goHome() {
     setSelectedSection(null);
     setView("home");
@@ -381,7 +422,11 @@ export default function AlbumPage() {
       return;
     }
 
-    if (view === "repeated" || view === "missing-sections" || view === "compare") {
+    if (
+      view === "repeated" ||
+      view === "missing-sections" ||
+      view === "compare"
+    ) {
       setView("album-menu");
       return;
     }
@@ -398,7 +443,12 @@ export default function AlbumPage() {
     if (view === "section-detail") return "Países";
     if (view === "missing-section-detail") return "Faltantes";
 
-    if (view === "sections" || view === "repeated" || view === "missing-sections" || view === "compare") {
+    if (
+      view === "sections" ||
+      view === "repeated" ||
+      view === "missing-sections" ||
+      view === "compare"
+    ) {
       return "Menú álbum";
     }
 
@@ -569,18 +619,44 @@ export default function AlbumPage() {
     }));
   }
 
+  function clearLongPressTimer() {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  function startStickerLongPress(
+    section: AlbumSection,
+    number: number,
+    owned: boolean
+  ) {
+    longPressTriggered.current = false;
+    clearLongPressTimer();
+
+    if (!owned) return;
+
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      setRepetitionEditor({
+        sectionCode: section.code,
+        sectionName: section.name,
+        number,
+      });
+    }, 550);
+  }
+
+  function endStickerLongPress() {
+    clearLongPressTimer();
+  }
+
   function handleStickerClick(sectionCode: string, number: number) {
-    if (clickTimer.current) {
-      clearTimeout(clickTimer.current);
-      clickTimer.current = null;
-      addDuplicate(sectionCode, number);
+    if (longPressTriggered.current) {
+      longPressTriggered.current = false;
       return;
     }
 
-    clickTimer.current = setTimeout(() => {
-      toggleOwned(sectionCode, number);
-      clickTimer.current = null;
-    }, 250);
+    toggleOwned(sectionCode, number);
   }
 
   async function compareAlbums() {
@@ -699,6 +775,111 @@ export default function AlbumPage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
+      {showRepeatUpdateNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+            <p className="mb-2 text-sm font-bold uppercase tracking-[0.25em] text-green-400">
+              Nuevo cambio
+            </p>
+
+            <h2 className="mb-4 text-2xl font-black">
+              Nueva forma de manejar repetidas
+            </h2>
+
+            <div className="space-y-3 text-sm leading-relaxed text-zinc-300">
+              <p>
+                Ahora ya no necesitas hacer doble toque para agregar repetidas.
+              </p>
+
+              <p>
+                Primero marca la lámina como conseguida. Luego mantén presionada
+                esa lámina para abrir los botones <strong>+</strong> y{" "}
+                <strong>-</strong>.
+              </p>
+
+              <p>
+                Con <strong>+</strong> sumas repetidas y con{" "}
+                <strong>-</strong> las vas quitando.
+              </p>
+            </div>
+
+            <button
+              onClick={closeRepeatUpdateNotice}
+              className="mt-6 w-full rounded-2xl bg-green-500 px-5 py-4 text-left text-lg font-bold text-zinc-950 active:scale-95"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
+      {repetitionEditor && editingStickerStatus && (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 px-4 pb-5 sm:items-center sm:pb-0"
+          onClick={() => setRepetitionEditor(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-green-400">
+              Repetidas
+            </p>
+
+            <h2 className="mt-2 text-2xl font-black">
+              {repetitionEditor.sectionName} - {repetitionEditor.sectionCode}{" "}
+              {repetitionEditor.number}
+            </h2>
+
+            <p className="mt-2 text-sm text-zinc-400">
+              Usa los botones para agregar o quitar repetidas de esta lámina.
+            </p>
+
+            <div className="mt-5 flex items-center justify-center gap-4">
+              <button
+                onClick={() =>
+                  removeDuplicate(
+                    repetitionEditor.sectionCode,
+                    repetitionEditor.number
+                  )
+                }
+                className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-800 text-3xl font-black text-white active:scale-95"
+              >
+                -
+              </button>
+
+              <div className="rounded-2xl bg-zinc-950 px-6 py-4 text-center">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
+                  Cantidad
+                </p>
+                <p className="text-3xl font-black text-green-400">
+                  {editingStickerStatus.duplicates}
+                </p>
+              </div>
+
+              <button
+                onClick={() =>
+                  addDuplicate(
+                    repetitionEditor.sectionCode,
+                    repetitionEditor.number
+                  )
+                }
+                className="flex h-14 w-14 items-center justify-center rounded-2xl bg-green-500 text-3xl font-black text-zinc-950 active:scale-95"
+              >
+                +
+              </button>
+            </div>
+
+            <button
+              onClick={() => setRepetitionEditor(null)}
+              className="mt-5 w-full rounded-2xl bg-zinc-800 px-5 py-4 text-left text-base font-bold text-white active:scale-95"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-5 sm:px-6">
         <header className="mb-5 flex items-center justify-between gap-3">
           <button
@@ -811,7 +992,7 @@ export default function AlbumPage() {
                   <input
                     value={newAlbumCode}
                     onChange={(event) => setNewAlbumCode(event.target.value)}
-                    placeholder="Ej: álbum-juan-felipe"
+                    placeholder="Ej: familia-saenz"
                     className="mb-3 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none focus:border-green-400"
                   />
 
@@ -895,14 +1076,7 @@ export default function AlbumPage() {
           <section>
             <h2 className="mb-4 text-2xl font-black">Listado total</h2>
 
-            <div className="mb-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-3 text-sm leading-relaxed text-green-300">
-              <p className="font-bold text-green-400">Funcionamiento:</p>
-              <p>
-                Toca una vez para seleccionar una lámina. Tócala nuevamente para
-                deseleccionarla. Haz doble toque rápido para sumarla como
-                repetida.
-              </p>
-            </div>
+            <InstructionNote />
 
             <input
               value={sectionsSearch}
@@ -975,6 +1149,8 @@ export default function AlbumPage() {
               </button>
             </div>
 
+            <InstructionNote />
+
             <div className="grid grid-cols-4 gap-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10">
               {selectedSection.numbers.map((number) => {
                 const key = getStickerKey(selectedSection.code, number);
@@ -989,8 +1165,19 @@ export default function AlbumPage() {
                     onClick={() =>
                       handleStickerClick(selectedSection.code, number)
                     }
+                    onPointerDown={() =>
+                      startStickerLongPress(
+                        selectedSection,
+                        number,
+                        status.owned
+                      )
+                    }
+                    onPointerUp={endStickerLongPress}
+                    onPointerCancel={endStickerLongPress}
+                    onPointerLeave={endStickerLongPress}
+                    onContextMenu={(event) => event.preventDefault()}
                     className={[
-                      "relative aspect-square rounded-2xl border text-lg font-black active:scale-95",
+                      "relative aspect-square touch-none rounded-2xl border text-lg font-black active:scale-95",
                       status.owned
                         ? "border-green-400 bg-green-500 text-zinc-950"
                         : "border-zinc-700 bg-zinc-900 text-zinc-300",
@@ -1271,6 +1458,19 @@ function EmptyState({ text }: { text: string }) {
   return (
     <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900 p-6 text-center text-zinc-400">
       {text}
+    </div>
+  );
+}
+
+function InstructionNote() {
+  return (
+    <div className="mb-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-3 text-sm leading-relaxed text-green-300">
+      <p className="font-bold text-green-400">Funcionamiento:</p>
+      <p>
+        Toca una vez para seleccionar una lámina. Tócala nuevamente para
+        deseleccionarla. Para agregar o quitar repetidas, mantén presionada una
+        lámina que ya tengas y usa los botones + o -.
+      </p>
     </div>
   );
 }
