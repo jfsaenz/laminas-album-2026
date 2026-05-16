@@ -133,6 +133,11 @@ type RepetitionEditor = {
   number: number;
 } | null;
 
+type LastMissingAction = {
+  sectionCode: string;
+  number: number;
+} | null;
+
 export default function AlbumPage() {
   const router = useRouter();
   const params = useParams();
@@ -150,6 +155,9 @@ export default function AlbumPage() {
   const [lastOpenedSectionCode, setLastOpenedSectionCode] = useState<
     string | null
   >(null);
+  const [lastOpenedMissingSectionCode, setLastOpenedMissingSectionCode] =
+    useState<string | null>(null);
+
   const [stickers, setStickers] = useState<StickerState>({});
   const [isLoading, setIsLoading] = useState(true);
   const [syncMessage, setSyncMessage] = useState("Cargando datos...");
@@ -178,6 +186,8 @@ export default function AlbumPage() {
   const [repetitionEditor, setRepetitionEditor] =
     useState<RepetitionEditor>(null);
   const [showRepeatUpdateNotice, setShowRepeatUpdateNotice] = useState(false);
+  const [lastMissingAction, setLastMissingAction] =
+    useState<LastMissingAction>(null);
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
@@ -294,6 +304,25 @@ export default function AlbumPage() {
     };
   }, [view, lastOpenedSectionCode]);
 
+  useEffect(() => {
+    if (view !== "missing-sections" || !lastOpenedMissingSectionCode) return;
+
+    const timer = setTimeout(() => {
+      const sectionElement = document.getElementById(
+        `missing-section-${lastOpenedMissingSectionCode}`
+      );
+
+      sectionElement?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [view, lastOpenedMissingSectionCode]);
+
   async function saveStickerStatus(
     sectionCode: string,
     number: number,
@@ -346,6 +375,15 @@ export default function AlbumPage() {
     return Object.values(stickers).filter((sticker) => sticker.owned).length;
   }, [stickers]);
 
+  const completedSectionsCount = useMemo(() => {
+    return albumSections.filter((section) =>
+      section.numbers.every((number) => {
+        const key = getStickerKey(section.code, number);
+        return stickers[key]?.owned;
+      })
+    ).length;
+  }, [stickers]);
+
   const completedPercentage =
     totalStickers === 0
       ? "0.0"
@@ -382,10 +420,15 @@ export default function AlbumPage() {
   }, [repeatedStickers, repeatedSearch]);
 
   const filteredMissingSections = useMemo(() => {
-    return albumSections.filter((section) =>
-      matchesSectionSearch(section, missingSearch)
-    );
-  }, [missingSearch]);
+    return albumSections.filter((section) => {
+      const sectionMissing = section.numbers.filter((number) => {
+        const key = getStickerKey(section.code, number);
+        return !stickers[key]?.owned;
+      }).length;
+
+      return sectionMissing > 0 && matchesSectionSearch(section, missingSearch);
+    });
+  }, [missingSearch, stickers]);
 
   const editingStickerStatus = repetitionEditor
     ? stickers[
@@ -395,6 +438,20 @@ export default function AlbumPage() {
         duplicates: 0,
       }
     : null;
+
+  function getSectionOwnedCount(section: AlbumSection) {
+    return section.numbers.filter((number) => {
+      const key = getStickerKey(section.code, number);
+      return stickers[key]?.owned;
+    }).length;
+  }
+
+  function getSectionMissingCount(section: AlbumSection) {
+    return section.numbers.filter((number) => {
+      const key = getStickerKey(section.code, number);
+      return !stickers[key]?.owned;
+    }).length;
+  }
 
   function closeRepeatUpdateNotice() {
     localStorage.setItem("has_seen_repeat_longpress_update_v1", "true");
@@ -569,6 +626,7 @@ export default function AlbumPage() {
 
   function openMissingSection(section: AlbumSection) {
     setSelectedSection(section);
+    setLastOpenedMissingSectionCode(section.code);
     setView("missing-section-detail");
   }
 
@@ -603,6 +661,29 @@ export default function AlbumPage() {
         duplicates: nextOwned ? currentStatus.duplicates : 0,
       };
     });
+  }
+
+  function markMissingAsOwned(sectionCode: string, number: number) {
+    setLastMissingAction({
+      sectionCode,
+      number,
+    });
+
+    updateSticker(sectionCode, number, () => ({
+      owned: true,
+      duplicates: 0,
+    }));
+  }
+
+  function undoLastMissingChange() {
+    if (!lastMissingAction) return;
+
+    updateSticker(lastMissingAction.sectionCode, lastMissingAction.number, () => ({
+      owned: false,
+      duplicates: 0,
+    }));
+
+    setLastMissingAction(null);
   }
 
   function addDuplicate(sectionCode: string, number: number) {
@@ -894,6 +975,9 @@ export default function AlbumPage() {
               {ownedCount}/{totalStickers} conseguidas
             </p>
             <p>{repeatedStickers.length} tipos repetidos</p>
+            <p>
+              {completedSectionsCount}/{albumSections.length} secciones completas
+            </p>
             <p className="font-bold text-green-300">
               {completedPercentage}% completado
             </p>
@@ -1090,10 +1174,8 @@ export default function AlbumPage() {
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredSections.map((section) => {
-                  const sectionOwned = section.numbers.filter((number) => {
-                    const key = getStickerKey(section.code, number);
-                    return stickers[key]?.owned;
-                  }).length;
+                  const sectionOwned = getSectionOwnedCount(section);
+                  const isComplete = sectionOwned === section.numbers.length;
 
                   return (
                     <button
@@ -1101,15 +1183,28 @@ export default function AlbumPage() {
                       key={section.code}
                       onClick={() => openSection(section)}
                       className={[
-                        "rounded-2xl border bg-zinc-900 p-4 text-left active:scale-95",
-                        lastOpenedSectionCode === section.code
+                        "rounded-2xl border p-4 text-left active:scale-95",
+                        isComplete
+                          ? "border-green-400 bg-green-500/10 shadow-[0_0_0_1px_rgba(74,222,128,0.35)]"
+                          : "bg-zinc-900",
+                        !isComplete && lastOpenedSectionCode === section.code
                           ? "border-green-400 shadow-[0_0_0_1px_rgba(74,222,128,0.35)]"
-                          : "border-zinc-800",
+                          : "",
+                        !isComplete && lastOpenedSectionCode !== section.code
+                          ? "border-zinc-800"
+                          : "",
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="text-lg font-bold">
+                          <h3
+                            className={[
+                              "text-lg font-bold",
+                              isComplete
+                                ? "text-green-400 underline decoration-green-400 underline-offset-4"
+                                : "",
+                            ].join(" ")}
+                          >
                             <SectionFlag section={section} />
                             {section.name}
                           </h3>
@@ -1118,7 +1213,14 @@ export default function AlbumPage() {
                           </p>
                         </div>
 
-                        <p className="rounded-full bg-zinc-800 px-3 py-1 text-sm font-bold text-green-400">
+                        <p
+                          className={[
+                            "rounded-full px-3 py-1 text-sm font-bold",
+                            isComplete
+                              ? "bg-green-500 text-zinc-950"
+                              : "bg-zinc-800 text-green-400",
+                          ].join(" ")}
+                        >
                           {sectionOwned}/{section.numbers.length}
                         </p>
                       </div>
@@ -1225,9 +1327,21 @@ export default function AlbumPage() {
                         {sticker.sectionName} - {sticker.sectionCode}{" "}
                         {sticker.number}
                       </h3>
-                      <p className="text-sm text-zinc-400">
-                        Repetidas: {sticker.duplicates}
-                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-sm text-zinc-400">
+                          Repetidas:
+                        </span>
+                        <span
+                          className={[
+                            "rounded-full px-3 py-1 text-sm font-black",
+                            sticker.duplicates > 1
+                              ? "bg-green-500 text-zinc-950"
+                              : "bg-zinc-800 text-green-400",
+                          ].join(" ")}
+                        >
+                          {sticker.duplicates}
+                        </span>
+                      </div>
                     </div>
 
                     <button
@@ -1257,20 +1371,23 @@ export default function AlbumPage() {
             />
 
             {filteredMissingSections.length === 0 ? (
-              <EmptyState text="No se encontraron apartados con esa búsqueda." />
+              <EmptyState text="No tienes apartados pendientes con esa búsqueda." />
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredMissingSections.map((section) => {
-                  const sectionMissing = section.numbers.filter((number) => {
-                    const key = getStickerKey(section.code, number);
-                    return !stickers[key]?.owned;
-                  }).length;
+                  const sectionMissing = getSectionMissingCount(section);
 
                   return (
                     <button
+                      id={`missing-section-${section.code}`}
                       key={section.code}
                       onClick={() => openMissingSection(section)}
-                      className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-left active:scale-95"
+                      className={[
+                        "rounded-2xl border bg-zinc-900 p-4 text-left active:scale-95",
+                        lastOpenedMissingSectionCode === section.code
+                          ? "border-green-400 shadow-[0_0_0_1px_rgba(74,222,128,0.35)]"
+                          : "border-zinc-800",
+                      ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -1314,6 +1431,22 @@ export default function AlbumPage() {
               </button>
             </div>
 
+            <div className="mb-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-3 text-sm leading-relaxed text-green-300">
+              <p className="font-bold text-green-400">Faltantes:</p>
+              <p>
+                Toca una lámina para marcarla como conseguida. Si te equivocas,
+                usa el botón de deshacer último cambio.
+              </p>
+            </div>
+
+            <button
+              onClick={undoLastMissingChange}
+              disabled={!lastMissingAction}
+              className="mb-4 w-full rounded-2xl bg-zinc-800 px-5 py-4 text-left text-base font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Deshacer último cambio
+            </button>
+
             <div className="grid grid-cols-4 gap-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10">
               {selectedSection.numbers
                 .filter((number) => {
@@ -1321,12 +1454,13 @@ export default function AlbumPage() {
                   return !stickers[key]?.owned;
                 })
                 .map((number) => (
-                  <div
+                  <button
                     key={`${selectedSection.code}-${number}`}
-                    className="flex aspect-square items-center justify-center rounded-2xl border border-zinc-700 bg-zinc-900 text-lg font-black text-zinc-300"
+                    onClick={() => markMissingAsOwned(selectedSection.code, number)}
+                    className="flex aspect-square items-center justify-center rounded-2xl border border-zinc-700 bg-zinc-900 text-lg font-black text-zinc-300 active:scale-95"
                   >
                     {number}
-                  </div>
+                  </button>
                 ))}
             </div>
 
