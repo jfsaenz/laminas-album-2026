@@ -186,6 +186,7 @@ export default function AlbumPage() {
   const [repetitionEditor, setRepetitionEditor] =
     useState<RepetitionEditor>(null);
   const [showRepeatUpdateNotice, setShowRepeatUpdateNotice] = useState(false);
+  const [showLatestUpdatesNotice, setShowLatestUpdatesNotice] = useState(false);
   const [lastMissingAction, setLastMissingAction] =
     useState<LastMissingAction>(null);
 
@@ -277,6 +278,22 @@ export default function AlbumPage() {
 
       if (!hasSeenNotice) {
         setShowRepeatUpdateNotice(true);
+      }
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const hasSeenLatestUpdates = localStorage.getItem(
+        "has_seen_latest_album_updates_v1"
+      );
+
+      if (!hasSeenLatestUpdates) {
+        setShowLatestUpdatesNotice(true);
       }
     }, 0);
 
@@ -430,6 +447,17 @@ export default function AlbumPage() {
     });
   }, [missingSearch, stickers]);
 
+  const missingNavigationSections = useMemo(() => {
+    return albumSections.filter((section) => {
+      const missingCount = section.numbers.filter((number) => {
+        const key = getStickerKey(section.code, number);
+        return !stickers[key]?.owned;
+      }).length;
+
+      return missingCount > 0 || selectedSection?.code === section.code;
+    });
+  }, [stickers, selectedSection]);
+
   const editingStickerStatus = repetitionEditor
     ? stickers[
         getStickerKey(repetitionEditor.sectionCode, repetitionEditor.number)
@@ -456,6 +484,11 @@ export default function AlbumPage() {
   function closeRepeatUpdateNotice() {
     localStorage.setItem("has_seen_repeat_longpress_update_v1", "true");
     setShowRepeatUpdateNotice(false);
+  }
+
+  function closeLatestUpdatesNotice() {
+    localStorage.setItem("has_seen_latest_album_updates_v1", "true");
+    setShowLatestUpdatesNotice(false);
   }
 
   function goHome() {
@@ -628,6 +661,47 @@ export default function AlbumPage() {
     setSelectedSection(section);
     setLastOpenedMissingSectionCode(section.code);
     setView("missing-section-detail");
+  }
+
+  function getAdjacentSection(
+    currentSection: AlbumSection,
+    direction: "previous" | "next",
+    origin: "total" | "missing"
+  ) {
+    const sections =
+      origin === "missing" ? missingNavigationSections : albumSections;
+
+    const currentIndex = sections.findIndex(
+      (section) => section.code === currentSection.code
+    );
+
+    if (currentIndex === -1) return null;
+
+    const nextIndex =
+      direction === "previous" ? currentIndex - 1 : currentIndex + 1;
+
+    return sections[nextIndex] ?? null;
+  }
+
+  function goToAdjacentSection(
+    currentSection: AlbumSection,
+    direction: "previous" | "next",
+    origin: "total" | "missing"
+  ) {
+    const targetSection = getAdjacentSection(currentSection, direction, origin);
+
+    if (!targetSection) return;
+
+    setSelectedSection(targetSection);
+
+    if (origin === "missing") {
+      setLastOpenedMissingSectionCode(targetSection.code);
+      setView("missing-section-detail");
+      return;
+    }
+
+    setLastOpenedSectionCode(targetSection.code);
+    setView("section-detail");
   }
 
   function updateSticker(
@@ -886,6 +960,44 @@ export default function AlbumPage() {
 
             <button
               onClick={closeRepeatUpdateNotice}
+              className="mt-6 w-full rounded-2xl bg-green-500 px-5 py-4 text-left text-lg font-bold text-zinc-950 active:scale-95"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showLatestUpdatesNotice && !showRepeatUpdateNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+            <p className="mb-2 text-sm font-bold uppercase tracking-[0.25em] text-green-400">
+              Actualización
+            </p>
+
+            <h2 className="mb-4 text-2xl font-black">
+              nuevos cambios realizados
+            </h2>
+
+            <div className="space-y-3 text-sm leading-relaxed text-zinc-300">
+              <p>
+                Ahora puedes navegar entre secciones con botones de anterior y
+                siguiente.
+              </p>
+
+              <p>
+                En faltantes ya puedes marcar láminas como conseguidas y
+                deshacer el último cambio.
+              </p>
+
+              <p>
+                También verás secciones completas resaltadas, nuevas estadísticas
+                y una vista más clara de repetidas.
+              </p>
+            </div>
+
+            <button
+              onClick={closeLatestUpdatesNotice}
               className="mt-6 w-full rounded-2xl bg-green-500 px-5 py-4 text-left text-lg font-bold text-zinc-950 active:scale-95"
             >
               Entendido
@@ -1251,6 +1363,28 @@ export default function AlbumPage() {
               </button>
             </div>
 
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              <button
+                disabled={!getAdjacentSection(selectedSection, "previous", "total")}
+                onClick={() =>
+                  goToAdjacentSection(selectedSection, "previous", "total")
+                }
+                className="rounded-2xl bg-zinc-800 px-4 py-3 text-left text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ← Anterior
+              </button>
+
+              <button
+                disabled={!getAdjacentSection(selectedSection, "next", "total")}
+                onClick={() =>
+                  goToAdjacentSection(selectedSection, "next", "total")
+                }
+                className="rounded-2xl bg-zinc-800 px-4 py-3 text-right text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Siguiente →
+              </button>
+            </div>
+
             <InstructionNote />
 
             <div className="grid grid-cols-4 gap-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10">
@@ -1431,6 +1565,30 @@ export default function AlbumPage() {
               </button>
             </div>
 
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              <button
+                disabled={
+                  !getAdjacentSection(selectedSection, "previous", "missing")
+                }
+                onClick={() =>
+                  goToAdjacentSection(selectedSection, "previous", "missing")
+                }
+                className="rounded-2xl bg-zinc-800 px-4 py-3 text-left text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ← Anterior
+              </button>
+
+              <button
+                disabled={!getAdjacentSection(selectedSection, "next", "missing")}
+                onClick={() =>
+                  goToAdjacentSection(selectedSection, "next", "missing")
+                }
+                className="rounded-2xl bg-zinc-800 px-4 py-3 text-right text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Siguiente →
+              </button>
+            </div>
+
             <div className="mb-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-3 text-sm leading-relaxed text-green-300">
               <p className="font-bold text-green-400">Faltantes:</p>
               <p>
@@ -1583,6 +1741,10 @@ export default function AlbumPage() {
             </div>
           </section>
         )}
+
+        <footer className="mt-8 pb-4 text-center text-xs text-zinc-500">
+          para cualquier sugerencia contactate a jf.saenz@uniandes.edu.co :)
+        </footer>
       </div>
     </main>
   );
