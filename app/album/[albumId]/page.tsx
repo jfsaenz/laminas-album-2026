@@ -163,6 +163,7 @@ export default function AlbumPage() {
   const [syncMessage, setSyncMessage] = useState("Cargando datos...");
   const [copied, setCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [shareMessage, setShareMessage] = useState("");
 
   const [sectionsSearch, setSectionsSearch] = useState("");
   const [repeatedSearch, setRepeatedSearch] = useState("");
@@ -187,6 +188,7 @@ export default function AlbumPage() {
     useState<RepetitionEditor>(null);
   const [showRepeatUpdateNotice, setShowRepeatUpdateNotice] = useState(false);
   const [showLatestUpdatesNotice, setShowLatestUpdatesNotice] = useState(false);
+  const [showShareListsNotice, setShowShareListsNotice] = useState(false);
   const [lastMissingAction, setLastMissingAction] =
     useState<LastMissingAction>(null);
 
@@ -294,6 +296,22 @@ export default function AlbumPage() {
 
       if (!hasSeenLatestUpdates) {
         setShowLatestUpdatesNotice(true);
+      }
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const hasSeenShareListsNotice = localStorage.getItem(
+        "has_seen_share_lists_update_v1"
+      );
+
+      if (!hasSeenShareListsNotice) {
+        setShowShareListsNotice(true);
       }
     }, 0);
 
@@ -458,6 +476,8 @@ export default function AlbumPage() {
     });
   }, [stickers, selectedSection]);
 
+  const missingStickersCount = totalStickers - ownedCount;
+
   const editingStickerStatus = repetitionEditor
     ? stickers[
         getStickerKey(repetitionEditor.sectionCode, repetitionEditor.number)
@@ -489,6 +509,11 @@ export default function AlbumPage() {
   function closeLatestUpdatesNotice() {
     localStorage.setItem("has_seen_latest_album_updates_v1", "true");
     setShowLatestUpdatesNotice(false);
+  }
+
+  function closeShareListsNotice() {
+    localStorage.setItem("has_seen_share_lists_update_v1", "true");
+    setShowShareListsNotice(false);
   }
 
   function goHome() {
@@ -814,6 +839,81 @@ export default function AlbumPage() {
     toggleOwned(sectionCode, number);
   }
 
+  function buildRepeatedListText() {
+    if (repeatedStickers.length === 0) {
+      return "No tengo láminas repetidas por ahora.";
+    }
+
+    const lines = repeatedStickers.map((sticker) => {
+      return `${getSectionFlag(sticker.sectionCode)} ${sticker.sectionName} (${
+        sticker.sectionCode
+      }) ${sticker.number} — repetidas: ${sticker.duplicates}`;
+    });
+
+    return ["Mis láminas repetidas:", "", ...lines].join("\n");
+  }
+
+  function buildMissingListText() {
+    const lines: string[] = [];
+
+    albumSections.forEach((section) => {
+      const missingNumbers = section.numbers.filter((number) => {
+        const key = getStickerKey(section.code, number);
+        return !stickers[key]?.owned;
+      });
+
+      if (missingNumbers.length === 0) return;
+
+      lines.push(
+        `${section.flag} ${section.name} (${section.code}): ${missingNumbers.join(
+          ", "
+        )}`
+      );
+    });
+
+    if (lines.length === 0) {
+      return "No me faltan láminas por ahora.";
+    }
+
+    return ["Mis láminas faltantes:", "", ...lines].join("\n");
+  }
+
+  async function sharePlainText(text: string, successMessage: string) {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          text,
+        });
+
+        setShareMessage(successMessage);
+      } else {
+        await navigator.clipboard.writeText(text);
+        setShareMessage("Lista copiada al portapapeles.");
+      }
+
+      setTimeout(() => {
+        setShareMessage("");
+      }, 2500);
+    } catch (error) {
+      console.error(error);
+      setShareMessage("No se pudo compartir la lista.");
+    }
+  }
+
+  async function shareRepeatedList() {
+    await sharePlainText(
+      buildRepeatedListText(),
+      "Lista de repetidas lista para compartir."
+    );
+  }
+
+  async function shareMissingList() {
+    await sharePlainText(
+      buildMissingListText(),
+      "Lista de faltantes lista para compartir."
+    );
+  }
+
   async function compareAlbums() {
     const cleanCode = compareCode.trim().toLowerCase();
 
@@ -1006,6 +1106,45 @@ export default function AlbumPage() {
         </div>
       )}
 
+      {showShareListsNotice &&
+        !showRepeatUpdateNotice &&
+        !showLatestUpdatesNotice && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+            <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+              <p className="mb-2 text-sm font-bold uppercase tracking-[0.25em] text-green-400">
+                Actualización
+              </p>
+
+              <h2 className="mb-4 text-2xl font-black">
+                nuevos cambios realizados
+              </h2>
+
+              <div className="space-y-3 text-sm leading-relaxed text-zinc-300">
+                <p>
+                  Ahora puedes generar y compartir listas en texto de tus
+                  repetidas y faltantes.
+                </p>
+
+                <p>
+                  Usa el botón superior en cada apartado para compartirlas por
+                  WhatsApp, Instagram u otra app compatible.
+                </p>
+
+                <p>
+                  Solo se comparte el mensaje de texto, no se envía ningún link.
+                </p>
+              </div>
+
+              <button
+                onClick={closeShareListsNotice}
+                className="mt-6 w-full rounded-2xl bg-green-500 px-5 py-4 text-left text-lg font-bold text-zinc-950 active:scale-95"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        )}
+
       {repetitionEditor && editingStickerStatus && (
         <div
           className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 px-4 pb-5 sm:items-center sm:pb-0"
@@ -1096,6 +1235,12 @@ export default function AlbumPage() {
             <p className="text-green-400">{syncMessage}</p>
           </div>
         </header>
+
+        {shareMessage && (
+          <div className="mb-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-3 text-sm font-bold text-green-300">
+            {shareMessage}
+          </div>
+        )}
 
         {view === "home" && (
           <section className="flex flex-1 flex-col items-center justify-center">
@@ -1437,6 +1582,14 @@ export default function AlbumPage() {
           <section>
             <h2 className="mb-4 text-2xl font-black">Láminas repetidas</h2>
 
+            <button
+              onClick={shareRepeatedList}
+              disabled={repeatedStickers.length === 0}
+              className="mb-4 w-full rounded-2xl bg-green-500 px-5 py-4 text-left text-base font-bold text-zinc-950 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Compartir lista de repetidas
+            </button>
+
             <input
               value={repeatedSearch}
               onChange={(event) => setRepeatedSearch(event.target.value)}
@@ -1496,6 +1649,14 @@ export default function AlbumPage() {
         {view === "missing-sections" && (
           <section>
             <h2 className="mb-4 text-2xl font-black">Láminas faltantes</h2>
+
+            <button
+              onClick={shareMissingList}
+              disabled={missingStickersCount === 0}
+              className="mb-4 w-full rounded-2xl bg-green-500 px-5 py-4 text-left text-base font-bold text-zinc-950 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Compartir lista de faltantes
+            </button>
 
             <input
               value={missingSearch}
